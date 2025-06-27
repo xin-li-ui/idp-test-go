@@ -14,9 +14,6 @@ import (
 )
 
 const (
-	clientID     = ""
-	clientSecret = ""
-
 	authUri     = "https://accounts.google.com/o/oauth2/auth"
 	tokenUri    = "https://oauth2.googleapis.com/token"
 	redirectURI = "http://localhost:8080/auth/callback"

@@ -21,9 +21,7 @@ import (
 )
 
 const (
-	clientID     = ""                                    // from bootstrap app (company tenant)
-	clientSecret = ""                                    // from bootstrap app (company tenant)
-	redirectURI  = "http://localhost:8080/auth/callback" // configured in bootstrap app (company tenant)
+	redirectURI = "http://localhost:8080/auth/callback" // configured in bootstrap app (company tenant)
 
 	authUri  = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 	tokenUri = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
