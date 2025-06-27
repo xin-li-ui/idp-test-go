@@ -20,7 +20,14 @@ import (
 	"time"
 )
 
-const ()
+const (
+	clientID     = "a91fb3d8-8d87-4ed9-9076-585b1b152709"     // from bootstrap app (company tenant)
+	clientSecret = "ABs8Q~h5Kg93k0QaESxzTKaJ5SX8tOTLprtXlbE3" // from bootstrap app (company tenant)
+	redirectURI  = "http://localhost:8080/auth/callback"      // configured in bootstrap app (company tenant)
+
+	authUri  = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+	tokenUri = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+)
 
 func CallbackMethod() {
 	http.HandleFunc("/", handleHome)
