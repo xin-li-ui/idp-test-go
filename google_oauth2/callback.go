@@ -13,11 +13,7 @@ import (
 	"net/http"
 )
 
-const (
-	authUri     = "https://accounts.google.com/o/oauth2/auth"
-	tokenUri    = "https://oauth2.googleapis.com/token"
-	redirectURI = "http://localhost:8080/auth/callback"
-)
+const ()
 
 var oauthConfig = &oauth2.Config{
 	ClientID:     clientID,
