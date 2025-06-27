@@ -47,7 +47,7 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 		<head><title>Microsoft authentication example</title></head>
 		<body>
 			<h1>Microsoft authentication example</h1>
-			<a href="/login">Login with Microsoft</a>
+			<a href="/login">Microsoft Entra</a>
 		</body>
 	</html>
 	`
@@ -146,6 +146,33 @@ func getTokenResult(ctx context.Context, code string) (*confidential.AuthResult,
 	log.Printf("✅ GetTokenFromCode %s  \n", string(tokenJson))
 
 	return &tokenResult, nil
+}
+
+func getTokenResult2(ctx context.Context, code string) (map[string]interface{}, error) {
+	log.Printf("✅ getAccessToken2 code: %v \n", code)
+
+	formData := map[string]string{
+		"grant_type":    "authorization_code",
+		"client_id":     clientID,
+		"client_secret": clientSecret,
+		"code":          code,
+		"redirect_uri":  redirectURI,
+		"scope":         "openid Application.ReadWrite.All",
+	}
+	resp, err := resty.New().R().
+		SetFormData(formData).
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
+		Post(tokenUri)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]interface{})
+	if err := json.Unmarshal(resp.Body(), &result); err != nil {
+		return nil, err
+	}
+	tokenJson, _ := json.Marshal(result)
+	log.Printf("✅ GetTokenFromCode2 %s  \n", string(tokenJson))
+	return result, nil
 }
 
 func createApplication(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient) (models.Applicationable, models.ServicePrincipalable, error) {
