@@ -20,12 +20,7 @@ import (
 	"time"
 )
 
-const (
-	redirectURI = "http://localhost:8080/auth/callback" // configured in bootstrap app (company tenant)
-
-	authUri  = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-	tokenUri = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-)
+const ()
 
 func CallbackMethod() {
 	http.HandleFunc("/", handleHome)
