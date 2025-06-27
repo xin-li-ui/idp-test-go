@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
+	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/applicationtemplates"
@@ -89,18 +90,16 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to NewGraphServiceClient: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	_ = graphClient
-
-	idPConfig, err := getIdpInit(ctx)
-	if err != nil {
-		http.Error(w, "Failed to initIdPConfig: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	_ = idPConfig
 
 	app, sp, err := createApplication(ctx, graphClient)
 	if err != nil {
 		http.Error(w, "Failed to createApplication: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	idPConfig, err := getIdpInit(ctx)
+	if err != nil {
+		http.Error(w, "Failed to initIdPConfig: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
