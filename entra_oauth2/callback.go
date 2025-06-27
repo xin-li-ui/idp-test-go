@@ -26,9 +26,18 @@ const (
 	clientSecret = "ABs8Q~h5Kg93k0QaESxzTKaJ5SX8tOTLprtXlbE3" // from bootstrap app (company tenant)
 	redirectURI  = "http://localhost:8080/auth/callback"      // configured in bootstrap app (company tenant)
 
-	authUri  = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-	tokenUri = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+	authUri      = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+	tokenUri     = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+	defaultScope = "https://graph.microsoft.com/.default"
 )
+
+var scopes = []string{
+	"Application.ReadWrite.All",
+	"Directory.ReadWrite.All",
+	"openid",
+	"email",
+	"profile",
+}
 
 func CallbackMethod() {
 	http.HandleFunc("/", handleHome)
@@ -62,7 +71,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	queryParams := url.Values{}
 	queryParams.Add("response_type", "code")
-	queryParams.Add("scope", "Application.ReadWrite.All Directory.ReadWrite.All offline_access")
+	queryParams.Add("scope", strings.Join(scopes, " "))
 	queryParams.Add("prompt", "consent") // approval force
 	queryParams.Add("client_id", clientID)
 	queryParams.Add("redirect_uri", redirectURI)
@@ -123,7 +132,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 			<p>Token: %s</p>
 			<p>App: %s</p>
 		</body>
-	</html>`, tokenResult.AccessToken, app.GetAppId())
+	</html>`, tokenResult.AccessToken, *app.GetAppId())
 	fmt.Fprintf(w, html)
 }
 
@@ -138,7 +147,7 @@ func getTokenResult(ctx context.Context, code string) (*confidential.AuthResult,
 	if err != nil {
 		return nil, err
 	}
-	tokenResult, err := client.AcquireTokenByAuthCode(ctx, code, redirectURI, []string{"https://graph.microsoft.com/.default"})
+	tokenResult, err := client.AcquireTokenByAuthCode(ctx, code, redirectURI, scopes)
 	if err != nil {
 		return nil, err
 	}
