@@ -39,6 +39,8 @@ var scopes = []string{
 	"profile",
 }
 
+var stateMap = map[string]string{}
+
 func CallbackMethod() {
 	http.HandleFunc("/", handleHome)
 	http.HandleFunc("/login", handleLogin)
@@ -69,14 +71,16 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Parse failed", http.StatusBadRequest)
 		return
 	}
+	state := uuid.New().String()
 	queryParams := url.Values{}
 	queryParams.Add("response_type", "code")
 	queryParams.Add("scope", strings.Join(scopes, " "))
 	queryParams.Add("prompt", "consent") // approval force
 	queryParams.Add("client_id", clientID)
 	queryParams.Add("redirect_uri", redirectURI)
-	queryParams.Add("state", "123456")
+	queryParams.Add("state", state)
 	u.RawQuery = queryParams.Encode()
+	stateMap[state] = state
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }
 
@@ -88,6 +92,18 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Authorization code missing", http.StatusBadRequest)
 		return
 	}
+	state := r.URL.Query().Get("state")
+	if state == "" {
+		http.Error(w, "state missing", http.StatusBadRequest)
+		return
+	}
+	if _, ok := stateMap[state]; ok {
+		delete(stateMap, state)
+	} else {
+		http.Error(w, "state not exist", http.StatusBadRequest)
+		return
+	}
+
 	tokenResult, err := getTokenResult(ctx, code)
 	if err != nil {
 		http.Error(w, "Failed to getTokenResult: "+err.Error(), http.StatusInternalServerError)
