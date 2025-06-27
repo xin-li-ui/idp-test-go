@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	"google.golang.org/api/admin/directory/v1"
 	googleoauth "google.golang.org/api/oauth2/v2"
 	"google.golang.org/api/option"
 	"log"
@@ -15,8 +14,8 @@ import (
 )
 
 const (
-	clientID     = "688308718847-s0gksaaiqhnbq9ga82orlvg192fplqh0.apps.googleusercontent.com"
-	clientSecret = "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"
+	clientID     = ""
+	clientSecret = ""
 
 	authUri     = "https://accounts.google.com/o/oauth2/auth"
 	tokenUri    = "https://oauth2.googleapis.com/token"

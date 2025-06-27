@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
-	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/applicationtemplates"
@@ -22,9 +21,9 @@ import (
 )
 
 const (
-	clientID     = "a91fb3d8-8d87-4ed9-9076-585b1b152709"     // from bootstrap app (company tenant)
-	clientSecret = "ABs8Q~h5Kg93k0QaESxzTKaJ5SX8tOTLprtXlbE3" // from bootstrap app (company tenant)
-	redirectURI  = "http://localhost:8080/auth/callback"      // configured in bootstrap app (company tenant)
+	clientID     = ""                                    // from bootstrap app (company tenant)
+	clientSecret = ""                                    // from bootstrap app (company tenant)
+	redirectURI  = "http://localhost:8080/auth/callback" // configured in bootstrap app (company tenant)
 
 	authUri  = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 	tokenUri = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
