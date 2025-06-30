@@ -38,7 +38,7 @@ var scopes = []string{
 	//"email",
 	//"profile",
 }
-
+var graphClient *msgraphsdkgo.GraphServiceClient
 var stateMap = map[string]string{}
 
 func CallbackMethod() {
@@ -110,13 +110,13 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	graphClient, err := NewGraphServiceClient(tokenResult)
+	graphClient, err = NewGraphServiceClient(tokenResult)
 	if err != nil {
 		http.Error(w, "Failed to NewGraphServiceClient: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	app, sp, err := createApplication(ctx, graphClient)
+	app, sp, err := createApplication(ctx)
 	if err != nil {
 		http.Error(w, "Failed to createApplication: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -128,13 +128,13 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = configurationSAML(ctx, graphClient, app, sp, idPConfig)
+	err = configurationSAML(ctx, app, sp, idPConfig)
 	if err != nil {
 		http.Error(w, "Failed to configurationSAML: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = configurationProvisioning(ctx, graphClient, sp, idPConfig)
+	err = configurationProvisioning(ctx, sp, idPConfig)
 	if err != nil {
 		http.Error(w, "Failed to configurationProvisioning: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -200,24 +200,26 @@ func getTokenResult2(ctx context.Context, code string) (map[string]interface{}, 
 	return result, nil
 }
 
-func createApplication(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient) (models.Applicationable, models.ServicePrincipalable, error) {
+func createApplication(ctx context.Context) (models.Applicationable, models.ServicePrincipalable, error) {
 
 	// create application and ServicePrincipal
 	instantiatePostRequestBody := applicationtemplates.NewItemInstantiatePostRequestBody()
+
 	instantiatePostRequestBody.SetDisplayName(pointer("xin-auto-1234"))
+
 	properties := make(map[string]interface{})
 	properties["notes"] = "Created from template via API"
 	instantiatePostRequestBody.SetAdditionalData(properties)
+
 	templateID := "8adf8e6e-67b2-4cf2-a259-e3dc5476c621" // custom template
 	result, err := graphClient.ApplicationTemplates().ByApplicationTemplateId(templateID).Instantiate().Post(ctx, instantiatePostRequestBody, nil)
 	if err != nil {
 		log.Fatal("Error instantiating application template:", err)
 	}
+
 	app := result.GetApplication()
 	sp := result.GetServicePrincipal()
-	log.Printf("✅ Application instantiated, appID: %s, appName: %s \n", *app.GetAppId(), *app.GetDisplayName())
-	log.Printf("app ID: %s\n", *app.GetId())
-	log.Printf("sp ID: %s\n", *sp.GetId())
+	log.Printf("✅ Application instantiated, appID: %s, appName: %s, app ID: %s, sp ID: %s \n", *app.GetAppId(), *app.GetDisplayName(), *app.GetId(), *sp.GetId())
 
 	// waiting microsoft instantiate done (async)
 	time.Sleep(10 * time.Second)
@@ -226,7 +228,7 @@ func createApplication(ctx context.Context, graphClient *msgraphsdkgo.GraphServi
 }
 
 // Set up Single Sign-On with SAML
-func configurationSAML(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, app models.Applicationable, sp models.ServicePrincipalable, idpConfig *IdpConfig) error {
+func configurationSAML(ctx context.Context, app models.Applicationable, sp models.ServicePrincipalable, idpConfig *IdpConfig) error {
 	appID := app.GetId()
 	spID := sp.GetId()
 
@@ -311,7 +313,7 @@ func configurationSAML(ctx context.Context, graphClient *msgraphsdkgo.GraphServi
 	return nil
 }
 
-func configurationProvisioning(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, sp models.ServicePrincipalable, idpConfig *IdpConfig) error {
+func configurationProvisioning(ctx context.Context, sp models.ServicePrincipalable, idpConfig *IdpConfig) error {
 	// New provisioning configuration
 	// Admin Credentials
 	pair1 := models.NewSynchronizationSecretKeyStringValuePair()
