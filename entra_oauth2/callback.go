@@ -204,7 +204,7 @@ func createApplication(ctx context.Context, graphClient *msgraphsdkgo.GraphServi
 
 	// create application and ServicePrincipal
 	instantiatePostRequestBody := applicationtemplates.NewItemInstantiatePostRequestBody()
-	instantiatePostRequestBody.SetDisplayName(ptr("xin-auto-1234"))
+	instantiatePostRequestBody.SetDisplayName(pointer("xin-auto-1234"))
 	properties := make(map[string]interface{})
 	properties["notes"] = "Created from template via API"
 	instantiatePostRequestBody.SetAdditionalData(properties)
@@ -234,7 +234,7 @@ func configurationSAML(ctx context.Context, graphClient *msgraphsdkgo.GraphServi
 	updateApp := models.NewApplication()
 	web := models.NewWebApplication()
 	setting := models.NewRedirectUriSettings()
-	setting.SetUri(ptr(idpConfig.GetReplyURL()))
+	setting.SetUri(pointer(idpConfig.GetReplyURL()))
 	redirectUriSettings := make([]models.RedirectUriSettingsable, 0)
 	redirectUriSettings = append(redirectUriSettings, setting)
 	web.SetRedirectUriSettings(redirectUriSettings)
@@ -254,9 +254,9 @@ func configurationSAML(ctx context.Context, graphClient *msgraphsdkgo.GraphServi
 
 	// update ServicePrincipal
 	updateSp := models.NewServicePrincipal()
-	updateSp.SetPreferredSingleSignOnMode(ptr("saml"))
+	updateSp.SetPreferredSingleSignOnMode(pointer("saml"))
 	samlSettings := models.NewSamlSingleSignOnSettings()
-	samlSettings.SetRelayState(ptr(""))
+	samlSettings.SetRelayState(pointer(""))
 	updateSp.SetSamlSingleSignOnSettings(samlSettings)
 	updateSp.SetReplyUrls([]string{idpConfig.GetReplyURL()})
 	_, err = graphClient.ServicePrincipals().ByServicePrincipalId(*spID).Patch(ctx, updateSp, nil)
@@ -425,10 +425,6 @@ func NewGraphServiceClient(tokenResult *confidential.AuthResult) (*msgraphsdkgo.
 	}
 
 	return graphClient, nil
-}
-
-func ptr(s string) *string {
-	return &s
 }
 
 func pointer[T any](v T) *T {
