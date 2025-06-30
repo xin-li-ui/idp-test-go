@@ -34,9 +34,9 @@ const (
 var scopes = []string{
 	"Application.ReadWrite.All",
 	"Directory.ReadWrite.All",
-	"openid",
-	"email",
-	"profile",
+	//"openid",
+	//"email",
+	//"profile",
 }
 
 var stateMap = map[string]string{}
