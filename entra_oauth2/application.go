@@ -176,12 +176,10 @@ func configurationSAML(ctx context.Context, app models.Applicationable, sp model
 
 	// update application
 	updateApp := models.NewApplication()
-	web := models.NewWebApplication()
 	setting := models.NewRedirectUriSettings()
 	setting.SetUri(pointer(idpConfig.GetReplyURL()))
-	redirectUriSettings := make([]models.RedirectUriSettingsable, 0)
-	redirectUriSettings = append(redirectUriSettings, setting)
-	web.SetRedirectUriSettings(redirectUriSettings)
+	web := models.NewWebApplication()
+	web.SetRedirectUriSettings([]models.RedirectUriSettingsable{setting})
 	updateApp.SetWeb(web)
 	domain := strings.Split(tokenResult.Account.PreferredUsername, "@")[1]
 	orgID := uuid.New().String()
@@ -192,8 +190,7 @@ func configurationSAML(ctx context.Context, app models.Applicationable, sp model
 	//updateApp.SetIdentifierUris([]string{"api://" + idpConfig.UniqueID})
 	_, err := graphClient.Applications().ByApplicationId(*appID).Patch(ctx, updateApp, nil)
 	if err != nil {
-		log.Println("update application failed:", err)
-		return err
+		return fmt.Errorf("update application failed: %s", err.Error())
 	}
 	log.Printf("✅ update application succeed \n")
 
@@ -206,7 +203,7 @@ func configurationSAML(ctx context.Context, app models.Applicationable, sp model
 	updateSp.SetReplyUrls([]string{idpConfig.GetReplyURL()})
 	_, err = graphClient.ServicePrincipals().ByServicePrincipalId(*spID).Patch(ctx, updateSp, nil)
 	if err != nil {
-		log.Fatal("update ServicePrincipal failed:", err)
+		return fmt.Errorf("update ServicePrincipal failed: %s", err.Error())
 	}
 	log.Printf("✅ update ServicePrincipal succeed \n")
 
@@ -215,8 +212,7 @@ func configurationSAML(ctx context.Context, app models.Applicationable, sp model
 	tokenSigningCertificate, err := graphClient.ServicePrincipals().ByServicePrincipalId(*sp.GetId()).
 		AddTokenSigningCertificate().Post(ctx, addTokenSigningCertificate, nil)
 	if err != nil {
-		log.Println("add tokenSigningCertificate failed:", err)
-		return err
+		return fmt.Errorf("add tokenSigningCertificate failed: %s", err.Error())
 	}
 	log.Printf("✅ add tokenSigningCertificate succeed: %s\n", *tokenSigningCertificate.GetKeyId())
 

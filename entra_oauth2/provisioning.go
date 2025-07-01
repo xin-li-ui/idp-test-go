@@ -17,20 +17,20 @@ func configurationProvisioning(ctx context.Context, sp models.ServicePrincipalab
 		return fmt.Errorf("验证管理员凭据失败: %w", err)
 	}
 
-	// 第二步：创建同步作业
+	// 第二步：配置同步设置
+	if err := configureCredentials(ctx, *spID, idpConfig); err != nil {
+		return fmt.Errorf("配置同步设置失败: %w", err)
+	}
+
+	// 第三步：创建同步作业
 	job, err := createSynchronizationJob(ctx, *spID)
 	if err != nil {
 		return fmt.Errorf("创建同步作业失败: %w", err)
 	}
 
-	// 第三步：等待作业创建完成
+	// 第四步：等待作业创建完成
 	if err = waitForJobReady(ctx, *spID, *job.GetId()); err != nil {
 		return fmt.Errorf("等待同步作业就绪失败: %w", err)
-	}
-
-	// 第四步：配置同步设置
-	if err := configureSync(ctx, *spID, idpConfig); err != nil {
-		return fmt.Errorf("配置同步设置失败: %w", err)
 	}
 
 	// 第五步：启动同步作业
@@ -56,18 +56,55 @@ func validateCredentials(ctx context.Context, spID string, idpConfig *IdpConfig)
 
 	// 创建验证请求
 	validateParams := serviceprincipals.NewItemSynchronizationJobsValidateCredentialsPostRequestBody()
-	validateParams.SetCredentials(pairs)
 	validateParams.SetTemplateId(pointer("scim"))
+	validateParams.SetCredentials(pairs)
 	validateParams.SetUseSavedCredentials(pointer(false))
 
 	// 验证凭据
 	err := graphClient.ServicePrincipals().ByServicePrincipalId(spID).
 		Synchronization().Jobs().ValidateCredentials().Post(ctx, validateParams, nil)
 	if err != nil {
-		return fmt.Errorf("验证凭据失败: %w", err)
+		return fmt.Errorf("验证凭据失败: %s", err.Error())
 	}
 
 	log.Printf("✅ 管理员凭据验证成功")
+	return nil
+}
+
+// configureCredentials 配置同步设置
+func configureCredentials(ctx context.Context, spID string, idpConfig *IdpConfig) error {
+	log.Printf("🔧 配置同步设置")
+
+	// 准备所有凭据
+	pair1 := models.NewSynchronizationSecretKeyStringValuePair()
+	pair1.SetKey(pointer(models.BASEADDRESS_SYNCHRONIZATIONSECRET))
+	pair1.SetValue(pointer(idpConfig.GetTenantURL()))
+
+	pair2 := models.NewSynchronizationSecretKeyStringValuePair()
+	pair2.SetKey(pointer(models.SECRETTOKEN_SYNCHRONIZATIONSECRET))
+	pair2.SetValue(pointer(idpConfig.ScimToken))
+
+	//pair3 := models.NewSynchronizationSecretKeyStringValuePair()
+	//pair3.SetKey(pointer(models.SYNCNOTIFICATIONSETTINGS_SYNCHRONIZATIONSECRET))
+	//pair3.SetValue(pointer("{\"Enabled\":false,\"DeleteThresholdEnabled\":false,\"HumanResourcesLookaheadQueryEnabled\":false}"))
+	//
+	//pair4 := models.NewSynchronizationSecretKeyStringValuePair()
+	//pair4.SetKey(pointer(models.SYNCALL_SYNCHRONIZATIONSECRET))
+	//pair4.SetValue(pointer("false"))
+
+	pairs := []models.SynchronizationSecretKeyStringValuePairable{pair1, pair2}
+
+	// 应用配置
+	addCredParams := serviceprincipals.NewItemSynchronizationSecretsPutRequestBody()
+	addCredParams.SetValue(pairs)
+
+	_, err := graphClient.ServicePrincipals().ByServicePrincipalId(spID).
+		Synchronization().Secrets().PutAsSecretsPutResponse(ctx, addCredParams, nil)
+	if err != nil {
+		return fmt.Errorf("应用同步配置失败: %w", err)
+	}
+
+	log.Printf("✅ 同步设置配置成功")
 	return nil
 }
 
@@ -147,43 +184,6 @@ func checkJobReady(ctx context.Context, spID, jobID string) (bool, error) {
 	}
 
 	return true, nil
-}
-
-// configureSync 配置同步设置
-func configureSync(ctx context.Context, spID string, idpConfig *IdpConfig) error {
-	log.Printf("🔧 配置同步设置")
-
-	// 准备所有凭据
-	pair1 := models.NewSynchronizationSecretKeyStringValuePair()
-	pair1.SetKey(pointer(models.BASEADDRESS_SYNCHRONIZATIONSECRET))
-	pair1.SetValue(pointer(idpConfig.GetTenantURL()))
-
-	pair2 := models.NewSynchronizationSecretKeyStringValuePair()
-	pair2.SetKey(pointer(models.SECRETTOKEN_SYNCHRONIZATIONSECRET))
-	pair2.SetValue(pointer(idpConfig.ScimToken))
-
-	pair3 := models.NewSynchronizationSecretKeyStringValuePair()
-	pair3.SetKey(pointer(models.SYNCNOTIFICATIONSETTINGS_SYNCHRONIZATIONSECRET))
-	pair3.SetValue(pointer("{\"Enabled\":false,\"DeleteThresholdEnabled\":false,\"HumanResourcesLookaheadQueryEnabled\":false}"))
-
-	pair4 := models.NewSynchronizationSecretKeyStringValuePair()
-	pair4.SetKey(pointer(models.SYNCALL_SYNCHRONIZATIONSECRET))
-	pair4.SetValue(pointer("false"))
-
-	pairs := []models.SynchronizationSecretKeyStringValuePairable{pair1, pair2, pair3, pair4}
-
-	// 应用配置
-	addCredParams := serviceprincipals.NewItemSynchronizationSecretsPutRequestBody()
-	addCredParams.SetValue(pairs)
-
-	_, err := graphClient.ServicePrincipals().ByServicePrincipalId(spID).
-		Synchronization().Secrets().PutAsSecretsPutResponse(ctx, addCredParams, nil)
-	if err != nil {
-		return fmt.Errorf("应用同步配置失败: %w", err)
-	}
-
-	log.Printf("✅ 同步设置配置成功")
-	return nil
 }
 
 // startSynchronizationJob 启动同步作业
