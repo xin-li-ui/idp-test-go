@@ -26,7 +26,7 @@ const (
 
 var scopes = []string{
 	"Application.ReadWrite.All",
-	"Directory.Read.All",
+	//"Directory.ReadWrite.All",
 	//"openid",
 	//"email",
 	//"profile",
