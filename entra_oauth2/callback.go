@@ -26,7 +26,7 @@ const (
 
 var scopes = []string{
 	"Application.ReadWrite.All",
-	"Directory.ReadWrite.All",
+	"Directory.Read.All",
 	//"openid",
 	//"email",
 	//"profile",
@@ -105,45 +105,44 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	graphClient, err = NewGraphServiceClient()
-	if err != nil {
-		http.Error(w, "Failed to NewGraphServiceClient: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	app, sp, err := createApplication(ctx)
-	if err != nil {
-		http.Error(w, "Failed to createApplication: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	idPConfig, err := getIdpInit(ctx)
-	if err != nil {
-		http.Error(w, "Failed to initIdPConfig: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	err = configurationSAML(ctx, app, sp, idPConfig)
-	if err != nil {
-		http.Error(w, "Failed to configurationSAML: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	err = configurationProvisioning(ctx, sp, idPConfig)
-	if err != nil {
-		http.Error(w, "Failed to configurationProvisioning: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	//graphClient, err = NewGraphServiceClient()
+	//if err != nil {
+	//	http.Error(w, "Failed to NewGraphServiceClient: "+err.Error(), http.StatusInternalServerError)
+	//	return
+	//}
+	//
+	//app, sp, err := createApplication(ctx)
+	//if err != nil {
+	//	http.Error(w, "Failed to createApplication: "+err.Error(), http.StatusInternalServerError)
+	//	return
+	//}
+	//
+	//idPConfig, err := getIdpInit(ctx)
+	//if err != nil {
+	//	http.Error(w, "Failed to initIdPConfig: "+err.Error(), http.StatusInternalServerError)
+	//	return
+	//}
+	//
+	//err = configurationSAML(ctx, app, sp, idPConfig)
+	//if err != nil {
+	//	http.Error(w, "Failed to configurationSAML: "+err.Error(), http.StatusInternalServerError)
+	//	return
+	//}
+	//
+	//err = configurationProvisioning(ctx, sp, idPConfig)
+	//if err != nil {
+	//	http.Error(w, "Failed to configurationProvisioning: "+err.Error(), http.StatusInternalServerError)
+	//	return
+	//}
 
 	html := fmt.Sprintf(`
 	<!DOCTYPE html>
 	<html>
 		<body>
-			<h1>sign-on successfully</h1>
+			<h1>successfully</h1>
 			<p>Token: %s</p>
-			<p>App: %s</p>
 		</body>
-	</html>`, tokenResult.AccessToken, *app.GetAppId())
+	</html>`, tokenResult.AccessToken)
 	fmt.Fprintf(w, html)
 }
 
