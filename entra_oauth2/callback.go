@@ -8,10 +8,12 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
+	"github.com/patrickmn/go-cache"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const (
@@ -24,28 +26,31 @@ const (
 	defaultScope = "https://graph.microsoft.com/.default"
 )
 
-var scopes = []string{
-	"Application.ReadWrite.All",
-	//"Directory.ReadWrite.All",
-	//"openid",
-	//"email",
-	//"profile",
-}
-var graphClient *msgraphsdkgo.GraphServiceClient
-var tokenResult *confidential.AuthResult
-var stateMap = map[string]string{}
-
-func CallbackMethod() {
-	http.HandleFunc("/", handleHome)
-	http.HandleFunc("/login", handleLogin)
-	http.HandleFunc("/auth/callback", handleCallback)
-
-	port := "8080"
-	log.Printf("Server running on http://localhost:%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+type EntraService struct {
+	scopes       []string
+	graphClient  *msgraphsdkgo.GraphServiceClient
+	stateCache   *cache.Cache
+	stateToToken map[string]*confidential.AuthResult
+	httpClient   *resty.Client
 }
 
-func handleHome(w http.ResponseWriter, r *http.Request) {
+func NewEntraService() *EntraService {
+	s := &EntraService{
+		scopes: []string{
+			"Application.ReadWrite.All",
+			//"Directory.ReadWrite.All",
+			//"openid",
+			//"email",
+			//"profile",
+		},
+		stateCache:   cache.New(5*time.Minute, 10*time.Minute),
+		stateToToken: make(map[string]*confidential.AuthResult),
+		httpClient:   resty.New(),
+	}
+	return s
+}
+
+func (s *EntraService) HandleHome(w http.ResponseWriter, r *http.Request) {
 	html := `
 	<!DOCTYPE html>
 	<html>
@@ -59,7 +64,9 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, html)
 }
 
-func handleLogin(w http.ResponseWriter, r *http.Request) {
+func (s *EntraService) HandleLogin(w http.ResponseWriter, r *http.Request) {
+
+	// build auth url
 	u, err := url.Parse(authUri)
 	if err != nil {
 		http.Error(w, "Parse failed", http.StatusBadRequest)
@@ -68,17 +75,35 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	state := uuid.New().String()
 	queryParams := url.Values{}
 	queryParams.Add("response_type", "code")
-	queryParams.Add("scope", strings.Join(scopes, " "))
+	queryParams.Add("scope", strings.Join(s.scopes, " "))
 	queryParams.Add("prompt", "consent") // approval force
 	queryParams.Add("client_id", clientID)
 	queryParams.Add("redirect_uri", redirectURI)
 	queryParams.Add("state", state)
 	u.RawQuery = queryParams.Encode()
-	stateMap[state] = state
+
+	// save state
+	s.setState(state)
+
+	// notify state to ucs
+	go func() {
+		ctx := context.TODO()
+		_, err = s.httpClient.R().SetContext(ctx).
+			SetBody(map[string]interface{}{
+				"state":      state,
+				"expired_at": time.Now().Add(5 * time.Minute).Unix(),
+			}).
+			Post("http://192.168.1.1:9580/admin/api/v1/auth/entra_state")
+		if err != nil {
+			log.Printf("save entra state failed: %v \n", state)
+			return
+		}
+	}()
+
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }
 
-func handleCallback(w http.ResponseWriter, r *http.Request) {
+func (s *EntraService) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	code := r.URL.Query().Get("code")
@@ -91,49 +116,54 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "state missing", http.StatusBadRequest)
 		return
 	}
-	if _, ok := stateMap[state]; ok {
-		delete(stateMap, state)
+	if s.existState(state) {
+		s.deleteState(state)
 	} else {
 		http.Error(w, "state not exist", http.StatusBadRequest)
 		return
 	}
 
 	var err error
-	tokenResult, err = getTokenResult(ctx, code)
+	tokenResult, err := s.getTokenResult(ctx, code)
 	if err != nil {
 		http.Error(w, "Failed to getTokenResult: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.stateToToken[state] = tokenResult
 
-	//graphClient, err = NewGraphServiceClient()
-	//if err != nil {
-	//	http.Error(w, "Failed to NewGraphServiceClient: "+err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
-	//
-	//app, sp, err := createApplication(ctx)
-	//if err != nil {
-	//	http.Error(w, "Failed to createApplication: "+err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
-	//
-	//idPConfig, err := getIdpInit(ctx)
-	//if err != nil {
-	//	http.Error(w, "Failed to initIdPConfig: "+err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
-	//
-	//err = configurationSAML(ctx, app, sp, idPConfig)
-	//if err != nil {
-	//	http.Error(w, "Failed to configurationSAML: "+err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
-	//
-	//err = configurationProvisioning(ctx, sp, idPConfig)
-	//if err != nil {
-	//	http.Error(w, "Failed to configurationProvisioning: "+err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
+	go func() {
+		bctx := context.TODO()
+		graphClient, err := NewGraphServiceClient(tokenResult)
+		if err != nil {
+			log.Printf("Failed to NewGraphServiceClient: " + err.Error())
+			return
+		}
+		s.graphClient = graphClient
+
+		app, sp, err := s.createApplication(bctx)
+		if err != nil {
+			log.Printf("Failed to createApplication: " + err.Error())
+			return
+		}
+
+		idPConfig, err := s.getIdpInit(bctx)
+		if err != nil {
+			log.Printf("Failed to initIdPConfig: " + err.Error())
+			return
+		}
+
+		err = s.configurationSAML(bctx, app, sp, idPConfig, tokenResult)
+		if err != nil {
+			log.Printf("Failed to configurationSAML: " + err.Error())
+			return
+		}
+
+		err = s.configurationProvisioning(bctx, sp, idPConfig)
+		if err != nil {
+			log.Printf("Failed to configurationProvisioning: " + err.Error())
+			return
+		}
+	}()
 
 	html := fmt.Sprintf(`
 	<!DOCTYPE html>
@@ -146,7 +176,33 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, html)
 }
 
-func getTokenResult(ctx context.Context, code string) (*confidential.AuthResult, error) {
+func (s *EntraService) GetToken(w http.ResponseWriter, r *http.Request) {
+
+	state := r.URL.Query().Get("state")
+	if state == "" {
+		http.Error(w, "state missing", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	tokenResult, exist := s.stateToToken[state]
+	if !exist {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("{}"))
+		return
+	}
+
+	response := EntraToken{
+		AccessToken: tokenResult.AccessToken,
+		ExpiresOn:   tokenResult.ExpiresOn.Unix(),
+	}
+	response.Account.Username = tokenResult.Account.PreferredUsername
+	jsonData, _ := json.Marshal(response)
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonData)
+}
+
+func (s *EntraService) getTokenResult(ctx context.Context, code string) (*confidential.AuthResult, error) {
 	log.Printf("✅ getAccessToken code: %v \n", code)
 
 	cred, err := confidential.NewCredFromSecret(clientSecret)
@@ -157,7 +213,7 @@ func getTokenResult(ctx context.Context, code string) (*confidential.AuthResult,
 	if err != nil {
 		return nil, err
 	}
-	tokenResult, err := client.AcquireTokenByAuthCode(ctx, code, redirectURI, scopes)
+	tokenResult, err := client.AcquireTokenByAuthCode(ctx, code, redirectURI, s.scopes)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +223,7 @@ func getTokenResult(ctx context.Context, code string) (*confidential.AuthResult,
 	return &tokenResult, nil
 }
 
-func getTokenResult2(ctx context.Context, code string) (map[string]interface{}, error) {
+func (s *EntraService) getTokenResult2(ctx context.Context, code string) (map[string]interface{}, error) {
 	log.Printf("✅ getAccessToken2 code: %v \n", code)
 
 	formData := map[string]string{
@@ -178,7 +234,7 @@ func getTokenResult2(ctx context.Context, code string) (map[string]interface{}, 
 		"redirect_uri":  redirectURI,
 		"scope":         "openid Application.ReadWrite.All",
 	}
-	resp, err := resty.New().R().
+	resp, err := s.httpClient.R().
 		SetFormData(formData).
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		Post(tokenUri)
@@ -194,10 +250,9 @@ func getTokenResult2(ctx context.Context, code string) (map[string]interface{}, 
 	return result, nil
 }
 
-func getIdpInit(ctx context.Context) (idpConfig *IdpConfig, err error) {
+func (s *EntraService) getIdpInit(ctx context.Context) (idpConfig *IdpConfig, err error) {
 	result := &IdpInitDataResp{}
-	client := resty.New()
-	_, err = client.R().SetContext(ctx).
+	_, err = s.httpClient.R().SetContext(ctx).
 		SetResult(&result).
 		Get("http://192.168.1.1:9580/proxy/directory/idp/identity_provider/init")
 	if err != nil {
@@ -210,14 +265,13 @@ func getIdpInit(ctx context.Context) (idpConfig *IdpConfig, err error) {
 	return
 }
 
-func addIdp(ctx context.Context, filePath string, formData map[string]string) (err error) {
+func (s *EntraService) addIdp(ctx context.Context, filePath string, formData map[string]string) (err error) {
 	//	{
 	//		"system_key": "office365",
 	//		"unique_id": "",
 	//		"scim_token": "",
 	//	}
-	client := resty.New()
-	_, err = client.R().SetContext(ctx).
+	_, err = s.httpClient.R().SetContext(ctx).
 		SetFile("metadata", filePath).
 		SetFormData(formData).
 		Post("http://192.168.1.1:9580/proxy/directory/idp/identity_provider")
@@ -228,7 +282,7 @@ func addIdp(ctx context.Context, filePath string, formData map[string]string) (e
 	return
 }
 
-func NewGraphServiceClient() (*msgraphsdkgo.GraphServiceClient, error) {
+func NewGraphServiceClient(tokenResult *confidential.AuthResult) (*msgraphsdkgo.GraphServiceClient, error) {
 	credential := &TokenCredential{
 		Token:     tokenResult.AccessToken,
 		ExpiresOn: tokenResult.ExpiresOn,
@@ -246,4 +300,17 @@ func NewGraphServiceClient() (*msgraphsdkgo.GraphServiceClient, error) {
 
 func pointer[T any](v T) *T {
 	return &v
+}
+
+func (s *EntraService) existState(state string) bool {
+	_, exist := s.stateCache.Get(state)
+	return exist
+}
+
+func (s *EntraService) setState(state string) {
+	s.stateCache.SetDefault(state, state)
+}
+
+func (s *EntraService) deleteState(state string) {
+	s.stateCache.Delete(state)
 }

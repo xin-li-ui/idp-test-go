@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+type EntraToken struct {
+	AccessToken string `json:"access_token"`
+	ExpiresOn   int64  `json:"expires_on"`
+	Account     struct {
+		Username string `json:"username"`
+	} `json:"account"`
+}
+
 type TokenCredential struct {
 	Token     string
 	ExpiresOn time.Time

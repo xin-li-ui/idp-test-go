@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
 	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 	"github.com/microsoftgraph/msgraph-sdk-go/applicationtemplates"
@@ -16,12 +17,11 @@ import (
 	"time"
 )
 
-func createApplication(ctx context.Context) (models.Applicationable, models.ServicePrincipalable, error) {
+func (s *EntraService) createApplication(ctx context.Context) (models.Applicationable, models.ServicePrincipalable, error) {
 
 	log.Printf("🔄 开始创建应用程序")
 
-	// 第一步：实例化应用程序模板
-	app, sp, err := instantiateApplicationTemplate(ctx)
+	app, sp, err := s.instantiateApplicationTemplate(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("实例化应用程序模板失败: %w", err)
 	}
@@ -30,7 +30,7 @@ func createApplication(ctx context.Context) (models.Applicationable, models.Serv
 	log.Printf("📋 App ID: %s, SP ID: %s", *app.GetId(), *sp.GetId())
 
 	// 第二步：等待应用程序完全创建完成
-	if err := waitForApplicationReady(ctx, app, sp); err != nil {
+	if err := s.waitForApplicationReady(ctx, app, sp); err != nil {
 		return nil, nil, fmt.Errorf("等待应用程序就绪失败: %w", err)
 	}
 
@@ -39,7 +39,7 @@ func createApplication(ctx context.Context) (models.Applicationable, models.Serv
 }
 
 // instantiateApplicationTemplate 实例化应用程序模板
-func instantiateApplicationTemplate(ctx context.Context) (models.Applicationable, models.ServicePrincipalable, error) {
+func (s *EntraService) instantiateApplicationTemplate(ctx context.Context) (models.Applicationable, models.ServicePrincipalable, error) {
 	// 创建实例化请求
 	instantiatePostRequestBody := applicationtemplates.NewItemInstantiatePostRequestBody()
 
@@ -53,7 +53,7 @@ func instantiateApplicationTemplate(ctx context.Context) (models.Applicationable
 
 	// 调用API创建应用程序
 	templateID := "8adf8e6e-67b2-4cf2-a259-e3dc5476c621" // custom template
-	result, err := graphClient.ApplicationTemplates().
+	result, err := s.graphClient.ApplicationTemplates().
 		ByApplicationTemplateId(templateID).
 		Instantiate().
 		Post(ctx, instantiatePostRequestBody, nil)
@@ -74,7 +74,7 @@ func instantiateApplicationTemplate(ctx context.Context) (models.Applicationable
 	return app, sp, nil
 }
 
-func waitForApplicationReady(ctx context.Context, app models.Applicationable, sp models.ServicePrincipalable) error {
+func (s *EntraService) waitForApplicationReady(ctx context.Context, app models.Applicationable, sp models.ServicePrincipalable) error {
 	log.Printf("⏳ 等待应用程序完全就绪...")
 
 	// 创建带超时的上下文
@@ -92,7 +92,7 @@ func waitForApplicationReady(ctx context.Context, app models.Applicationable, sp
 			return fmt.Errorf("等待应用程序就绪超时，已等待 %v", time.Since(startTime))
 		case <-ticker.C:
 			// 检查应用程序是否就绪
-			ready, err := checkApplicationReady(ctx, app, sp)
+			ready, err := s.checkApplicationReady(ctx, app, sp)
 			if err != nil {
 				log.Printf("⚠️  检查应用程序状态时出错: %v", err)
 				continue
@@ -109,7 +109,7 @@ func waitForApplicationReady(ctx context.Context, app models.Applicationable, sp
 	}
 }
 
-func checkApplicationReady(ctx context.Context, app models.Applicationable, sp models.ServicePrincipalable) (bool, error) {
+func (s *EntraService) checkApplicationReady(ctx context.Context, app models.Applicationable, sp models.ServicePrincipalable) (bool, error) {
 	appID := app.GetId()
 	spID := sp.GetId()
 
@@ -118,17 +118,17 @@ func checkApplicationReady(ctx context.Context, app models.Applicationable, sp m
 	}
 
 	// 检查1：尝试读取应用程序
-	if !checkApplicationAccessible(ctx, *appID) {
+	if !s.checkApplicationAccessible(ctx, *appID) {
 		return false, nil
 	}
 
 	// 检查2：尝试读取服务主体
-	if !checkServicePrincipalAccessible(ctx, *spID) {
+	if !s.checkServicePrincipalAccessible(ctx, *spID) {
 		return false, nil
 	}
 
 	// 检查3：尝试更新应用程序（测试写权限）
-	if !checkApplicationUpdatable(ctx, *appID) {
+	if !s.checkApplicationUpdatable(ctx, *appID) {
 		return false, nil
 	}
 
@@ -136,8 +136,8 @@ func checkApplicationReady(ctx context.Context, app models.Applicationable, sp m
 	return true, nil
 }
 
-func checkApplicationAccessible(ctx context.Context, appID string) bool {
-	_, err := graphClient.Applications().ByApplicationId(appID).Get(ctx, nil)
+func (s *EntraService) checkApplicationAccessible(ctx context.Context, appID string) bool {
+	_, err := s.graphClient.Applications().ByApplicationId(appID).Get(ctx, nil)
 	if err != nil {
 		log.Printf("🔍 应用程序不可访问: %v", err)
 		return false
@@ -146,8 +146,8 @@ func checkApplicationAccessible(ctx context.Context, appID string) bool {
 }
 
 // checkServicePrincipalAccessible 检查服务主体是否可访问
-func checkServicePrincipalAccessible(ctx context.Context, spID string) bool {
-	_, err := graphClient.ServicePrincipals().ByServicePrincipalId(spID).Get(ctx, nil)
+func (s *EntraService) checkServicePrincipalAccessible(ctx context.Context, spID string) bool {
+	_, err := s.graphClient.ServicePrincipals().ByServicePrincipalId(spID).Get(ctx, nil)
 	if err != nil {
 		log.Printf("🔍 服务主体不可访问: %v", err)
 		return false
@@ -156,12 +156,12 @@ func checkServicePrincipalAccessible(ctx context.Context, spID string) bool {
 }
 
 // checkApplicationUpdatable 检查应用程序是否可更新
-func checkApplicationUpdatable(ctx context.Context, appID string) bool {
+func (s *EntraService) checkApplicationUpdatable(ctx context.Context, appID string) bool {
 	// 创建一个简单的更新操作来测试
 	updateApp := models.NewApplication()
 	updateApp.SetNotes(pointer(fmt.Sprintf("Readiness check at %s", time.Now().Format(time.RFC3339))))
 
-	_, err := graphClient.Applications().ByApplicationId(appID).Patch(ctx, updateApp, nil)
+	_, err := s.graphClient.Applications().ByApplicationId(appID).Patch(ctx, updateApp, nil)
 	if err != nil {
 		log.Printf("🔍 应用程序不可更新: %v", err)
 		return false
@@ -170,7 +170,7 @@ func checkApplicationUpdatable(ctx context.Context, appID string) bool {
 }
 
 // Set up Single Sign-On with SAML
-func configurationSAML(ctx context.Context, app models.Applicationable, sp models.ServicePrincipalable, idpConfig *IdpConfig) error {
+func (s *EntraService) configurationSAML(ctx context.Context, app models.Applicationable, sp models.ServicePrincipalable, idpConfig *IdpConfig, tokenResult *confidential.AuthResult) error {
 	appID := app.GetId()
 	spID := sp.GetId()
 
@@ -188,7 +188,7 @@ func configurationSAML(ctx context.Context, app models.Applicationable, sp model
 	//updateApp.SetIdentifierUris([]string{idpConfig.GetEntityID()})
 	// this api unsupported 'api://xxx'
 	//updateApp.SetIdentifierUris([]string{"api://" + idpConfig.UniqueID})
-	_, err := graphClient.Applications().ByApplicationId(*appID).Patch(ctx, updateApp, nil)
+	_, err := s.graphClient.Applications().ByApplicationId(*appID).Patch(ctx, updateApp, nil)
 	if err != nil {
 		return fmt.Errorf("update application failed: %s", err.Error())
 	}
@@ -201,7 +201,7 @@ func configurationSAML(ctx context.Context, app models.Applicationable, sp model
 	samlSettings.SetRelayState(pointer(""))
 	updateSp.SetSamlSingleSignOnSettings(samlSettings)
 	updateSp.SetReplyUrls([]string{idpConfig.GetReplyURL()})
-	_, err = graphClient.ServicePrincipals().ByServicePrincipalId(*spID).Patch(ctx, updateSp, nil)
+	_, err = s.graphClient.ServicePrincipals().ByServicePrincipalId(*spID).Patch(ctx, updateSp, nil)
 	if err != nil {
 		return fmt.Errorf("update ServicePrincipal failed: %s", err.Error())
 	}
@@ -209,7 +209,7 @@ func configurationSAML(ctx context.Context, app models.Applicationable, sp model
 
 	// SAML Certificates - add TokenSigningCertificate
 	addTokenSigningCertificate := serviceprincipals.NewItemAddTokenSigningCertificatePostRequestBody()
-	tokenSigningCertificate, err := graphClient.ServicePrincipals().ByServicePrincipalId(*sp.GetId()).
+	tokenSigningCertificate, err := s.graphClient.ServicePrincipals().ByServicePrincipalId(*sp.GetId()).
 		AddTokenSigningCertificate().Post(ctx, addTokenSigningCertificate, nil)
 	if err != nil {
 		return fmt.Errorf("add tokenSigningCertificate failed: %s", err.Error())
@@ -238,7 +238,7 @@ func configurationSAML(ctx context.Context, app models.Applicationable, sp model
 	}
 
 	// add idP
-	err = addIdp(ctx, outputFile, map[string]string{
+	err = s.addIdp(ctx, outputFile, map[string]string{
 		"system_key": "office365",
 		"unique_id":  idpConfig.UniqueID,
 		"scim_token": idpConfig.ScimToken,

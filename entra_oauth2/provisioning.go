@@ -9,38 +9,38 @@ import (
 	"time"
 )
 
-func configurationProvisioning(ctx context.Context, sp models.ServicePrincipalable, idpConfig *IdpConfig) error {
+func (s *EntraService) configurationProvisioning(ctx context.Context, sp models.ServicePrincipalable, idpConfig *IdpConfig) error {
 	spID := sp.GetId()
 
 	// 第一步：验证管理员凭据
-	if err := validateCredentials(ctx, *spID, idpConfig); err != nil {
+	if err := s.validateCredentials(ctx, *spID, idpConfig); err != nil {
 		return fmt.Errorf("验证管理员凭据失败: %w", err)
 	}
 
 	// 第二步：配置同步设置
-	if err := configureCredentials(ctx, *spID, idpConfig); err != nil {
+	if err := s.configureCredentials(ctx, *spID, idpConfig); err != nil {
 		return fmt.Errorf("配置同步设置失败: %w", err)
 	}
 
 	// 第三步：创建同步作业
-	job, err := createSynchronizationJob(ctx, *spID)
+	job, err := s.createSynchronizationJob(ctx, *spID)
 	if err != nil {
 		return fmt.Errorf("创建同步作业失败: %w", err)
 	}
 
 	// 第四步：等待作业创建完成
-	if err = waitForJobReady(ctx, *spID, *job.GetId()); err != nil {
+	if err = s.waitForJobReady(ctx, *spID, *job.GetId()); err != nil {
 		return fmt.Errorf("等待同步作业就绪失败: %w", err)
 	}
 
 	// 第五步：启动同步作业
-	if err := startSynchronizationJob(ctx, *spID, *job.GetId()); err != nil {
+	if err := s.startSynchronizationJob(ctx, *spID, *job.GetId()); err != nil {
 		return fmt.Errorf("启动同步作业失败: %w", err)
 	}
 	return nil
 }
 
-func validateCredentials(ctx context.Context, spID string, idpConfig *IdpConfig) error {
+func (s *EntraService) validateCredentials(ctx context.Context, spID string, idpConfig *IdpConfig) error {
 	log.Printf("🔍 验证管理员凭据")
 
 	// 准备凭据
@@ -61,7 +61,7 @@ func validateCredentials(ctx context.Context, spID string, idpConfig *IdpConfig)
 	validateParams.SetUseSavedCredentials(pointer(false))
 
 	// 验证凭据
-	err := graphClient.ServicePrincipals().ByServicePrincipalId(spID).
+	err := s.graphClient.ServicePrincipals().ByServicePrincipalId(spID).
 		Synchronization().Jobs().ValidateCredentials().Post(ctx, validateParams, nil)
 	if err != nil {
 		return fmt.Errorf("验证凭据失败: %s", err.Error())
@@ -72,7 +72,7 @@ func validateCredentials(ctx context.Context, spID string, idpConfig *IdpConfig)
 }
 
 // configureCredentials 配置同步设置
-func configureCredentials(ctx context.Context, spID string, idpConfig *IdpConfig) error {
+func (s *EntraService) configureCredentials(ctx context.Context, spID string, idpConfig *IdpConfig) error {
 	log.Printf("🔧 配置同步设置")
 
 	// 准备所有凭据
@@ -98,7 +98,7 @@ func configureCredentials(ctx context.Context, spID string, idpConfig *IdpConfig
 	addCredParams := serviceprincipals.NewItemSynchronizationSecretsPutRequestBody()
 	addCredParams.SetValue(pairs)
 
-	_, err := graphClient.ServicePrincipals().ByServicePrincipalId(spID).
+	_, err := s.graphClient.ServicePrincipals().ByServicePrincipalId(spID).
 		Synchronization().Secrets().PutAsSecretsPutResponse(ctx, addCredParams, nil)
 	if err != nil {
 		return fmt.Errorf("应用同步配置失败: %w", err)
@@ -109,13 +109,13 @@ func configureCredentials(ctx context.Context, spID string, idpConfig *IdpConfig
 }
 
 // createSynchronizationJob 创建同步作业
-func createSynchronizationJob(ctx context.Context, spID string) (models.SynchronizationJobable, error) {
+func (s *EntraService) createSynchronizationJob(ctx context.Context, spID string) (models.SynchronizationJobable, error) {
 	log.Printf("🔄 创建同步作业")
 
 	synchronizationJob := models.NewSynchronizationJob()
 	synchronizationJob.SetTemplateId(pointer("scim"))
 
-	createdJob, err := graphClient.ServicePrincipals().ByServicePrincipalId(spID).
+	createdJob, err := s.graphClient.ServicePrincipals().ByServicePrincipalId(spID).
 		Synchronization().Jobs().Post(ctx, synchronizationJob, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建同步作业失败: %w", err)
@@ -126,7 +126,7 @@ func createSynchronizationJob(ctx context.Context, spID string) (models.Synchron
 }
 
 // waitForJobReady 等待同步作业就绪
-func waitForJobReady(ctx context.Context, spID, jobID string) error {
+func (s *EntraService) waitForJobReady(ctx context.Context, spID, jobID string) error {
 	log.Printf("⏳ 等待同步作业就绪...")
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
@@ -143,7 +143,7 @@ func waitForJobReady(ctx context.Context, spID, jobID string) error {
 			return fmt.Errorf("等待同步作业就绪超时，已等待 %v", time.Since(startTime))
 
 		case <-ticker.C:
-			ready, err := checkJobReady(ctx, spID, jobID)
+			ready, err := s.checkJobReady(ctx, spID, jobID)
 			if err != nil {
 				log.Printf("⚠️  检查同步作业状态时出错: %v", err)
 				continue
@@ -161,9 +161,9 @@ func waitForJobReady(ctx context.Context, spID, jobID string) error {
 }
 
 // checkJobReady 检查同步作业是否就绪
-func checkJobReady(ctx context.Context, spID, jobID string) (bool, error) {
+func (s *EntraService) checkJobReady(ctx context.Context, spID, jobID string) (bool, error) {
 	// 尝试获取同步作业
-	job, err := graphClient.ServicePrincipals().ByServicePrincipalId(spID).
+	job, err := s.graphClient.ServicePrincipals().ByServicePrincipalId(spID).
 		Synchronization().Jobs().BySynchronizationJobId(jobID).Get(ctx, nil)
 	if err != nil {
 		log.Printf("🔍 无法获取同步作业: %v", err)
@@ -176,7 +176,7 @@ func checkJobReady(ctx context.Context, spID, jobID string) (bool, error) {
 	}
 
 	// 尝试获取作业的详细信息来确认其完全就绪
-	_, err = graphClient.ServicePrincipals().ByServicePrincipalId(spID).
+	_, err = s.graphClient.ServicePrincipals().ByServicePrincipalId(spID).
 		Synchronization().Jobs().BySynchronizationJobId(jobID).Schema().Get(ctx, nil)
 	if err != nil {
 		log.Printf("🔍 同步作业模式不可用: %v", err)
@@ -187,10 +187,10 @@ func checkJobReady(ctx context.Context, spID, jobID string) (bool, error) {
 }
 
 // startSynchronizationJob 启动同步作业
-func startSynchronizationJob(ctx context.Context, spID, jobID string) error {
+func (s *EntraService) startSynchronizationJob(ctx context.Context, spID, jobID string) error {
 	log.Printf("🚀 启动同步作业")
 
-	err := graphClient.ServicePrincipals().ByServicePrincipalId(spID).
+	err := s.graphClient.ServicePrincipals().ByServicePrincipalId(spID).
 		Synchronization().Jobs().BySynchronizationJobId(jobID).Start().Post(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("启动同步作业失败: %w", err)
