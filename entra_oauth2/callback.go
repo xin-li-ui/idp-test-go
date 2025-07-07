@@ -133,36 +133,52 @@ func (s *EntraService) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		bctx := context.TODO()
-		graphClient, err := NewGraphServiceClient(tokenResult)
-		if err != nil {
-			log.Printf("Failed to NewGraphServiceClient: " + err.Error())
-			return
-		}
-		s.graphClient = graphClient
 
-		app, sp, err := s.createApplication(bctx)
+		// notify token to ucs
+		_, err = s.httpClient.R().SetContext(bctx).
+			SetBody(map[string]interface{}{
+				"access_token": tokenResult.AccessToken,
+				"expires_on":   tokenResult.ExpiresOn.Unix(),
+				"account": map[string]string{
+					"username": tokenResult.Account.PreferredUsername,
+				},
+			}).
+			Post("http://192.168.1.1:9580/admin/api/v1/auth/entra_token")
 		if err != nil {
-			log.Printf("Failed to createApplication: " + err.Error())
-			return
-		}
-
-		idPConfig, err := s.getIdpInit(bctx)
-		if err != nil {
-			log.Printf("Failed to initIdPConfig: " + err.Error())
+			log.Printf("save entra token failed: %v \n", state)
 			return
 		}
 
-		err = s.configurationSAML(bctx, app, sp, idPConfig, tokenResult)
-		if err != nil {
-			log.Printf("Failed to configurationSAML: " + err.Error())
-			return
-		}
-
-		err = s.configurationProvisioning(bctx, sp, idPConfig)
-		if err != nil {
-			log.Printf("Failed to configurationProvisioning: " + err.Error())
-			return
-		}
+		//graphClient, err := NewGraphServiceClient(tokenResult)
+		//if err != nil {
+		//	log.Printf("Failed to NewGraphServiceClient: " + err.Error())
+		//	return
+		//}
+		//s.graphClient = graphClient
+		//
+		//app, sp, err := s.createApplication(bctx)
+		//if err != nil {
+		//	log.Printf("Failed to createApplication: " + err.Error())
+		//	return
+		//}
+		//
+		//idPConfig, err := s.getIdpInit(bctx)
+		//if err != nil {
+		//	log.Printf("Failed to initIdPConfig: " + err.Error())
+		//	return
+		//}
+		//
+		//err = s.configurationSAML(bctx, app, sp, idPConfig, tokenResult)
+		//if err != nil {
+		//	log.Printf("Failed to configurationSAML: " + err.Error())
+		//	return
+		//}
+		//
+		//err = s.configurationProvisioning(bctx, sp, idPConfig)
+		//if err != nil {
+		//	log.Printf("Failed to configurationProvisioning: " + err.Error())
+		//	return
+		//}
 	}()
 
 	html := fmt.Sprintf(`
@@ -176,6 +192,8 @@ func (s *EntraService) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, html)
 }
 
+// request from ucs
+// [GET] /test/token
 func (s *EntraService) GetToken(w http.ResponseWriter, r *http.Request) {
 
 	state := r.URL.Query().Get("state")
